@@ -1,3 +1,5 @@
+![image](https://github.com/user-attachments/assets/a994297d-c730-45d4-8187-9404bb64c8b0)
+
 # Chat Messaging Template
 This project contains the necessary scaffold in order to get your multi-million chat application idea started! The main technology driving this application is `socket.io` which allows two way communication between the client side and server side through so called "socket events". 
 
