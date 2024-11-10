@@ -1,0 +1,79 @@
+<!-- 
+    Here you'll find the main exhibit: the chat application code. Feel free to look around!
+-->
+{% extends 'base.jinja' %}
+
+
+{% block content %} 
+<style>
+    *:not(.navBar) {
+        box-sizing: border-box;
+    }
+
+    .search_list {
+        width: 50%;
+        padding-right: 3%;
+        padding-left: 1%;
+        float: left;
+    }
+    
+
+    #first_row {
+        width: 49%;
+        font-size: 16px;
+        padding: 12px 20px 12px 40px;
+        border: 1px solid #ddd;
+        margin-bottom: 12px;
+    }
+
+    #ul_1 {
+        list-style-type: none;
+        padding: 0;
+        margin: 0;
+    }
+
+    #ul_1 li a {
+        border: 1px solid #ddd;
+        margin-top: -1px; /* Prevent double borders */
+        background-color: #f6f6f6;
+        padding: 12px;
+        padding-left: 50px;
+        padding-right: 50px;
+        text-decoration: none;
+        font-size: 18px;
+        color: black;
+        display: block
+    }
+
+    #ul_1 li a:hover:not(.header) {
+        background-color: #eee;
+    }
+</style>
+
+<h1 style="padding-left: 1rem">Start Chatting</h1>
+
+<section class="search_list">
+    <input type="text" id="first_row" onkeyup="Filter('ul_1', 'first_row')" placeholder="Search?">
+    <ul id="ul_1">
+        {% for r in friendList %}
+            <li><a>{{ r }} <button onclick="chat('{{ r }}')" style="float: right;">Chat</button></a></li>
+        {% endfor %}
+    </ul>
+</section>
+
+
+<script src="/static/js/libs/socket.io.min.js"></script>
+<script>
+
+async function chat(obj) {
+    let searchURL = "{{ url_for('start_chatting') }}";
+    let res = await axios.post(searchURL, {
+        username: '{{ username }}',
+        friend: obj
+    });
+    
+    window.open(res.data, "_self") 
+}
+</script>
+
+{% endblock %}

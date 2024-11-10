@@ -1,0 +1,689 @@
+<!-- 
+    Here you'll find the main exhibit: the chat application code. Feel free to look around!
+-->
+{% extends 'base.jinja' %}
+
+
+{% block content %} 
+<style>
+
+   main {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100%;
+   }
+    
+    #chat_box button {
+        background-color: #704caf;
+        border: 2px solid #704caf;
+        border-radius: 25px;
+
+        color: white;
+
+        font-size: 20px;
+        font-weight: bold;
+        padding: 15px 30px;
+        text-transform: uppercase;
+
+        cursor: pointer;
+    }
+    #chat_box button:hover {
+      background-color: #7556ac;
+      box-shadow: 0 6px 12px rgba(0, 0, 0, 0.5);
+    }
+
+    #message_box {
+        width: 30rem;
+        height: 35rem;
+        background-color: #ffffff;
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0px 0px 10px rgb(0, 0, 0, 5);
+    }
+
+    #top_strip {
+        background-color: #202224;
+        color: white;
+        padding: 0.5rem;
+        text-align: right;
+    }
+    #bottom_strip {
+        background-color: #202224;
+        color: white;
+        height: 10rem;
+        text-align: right;
+    }
+
+    #chat_history {
+        height: 25rem;
+        overflow-y: auto;
+        padding: 0.6rem;
+    }
+
+    #input_box {
+        display: flex;
+        padding: 0.3rem;
+        padding-left: 1rem;
+        padding-right: 1rem;
+        border-top: 1px solid #ccc;
+       
+        background-color: #ffffff;
+    }
+
+    #message {
+        padding: 0.5rem;
+        width: 100%;
+        border: none;
+        margin-right: 0.5rem;
+        margin-left: 0.5rem;
+        font-size: 16px;
+    }
+
+    button {
+        padding: 0.5rem 1rem;
+        background-color: #4CAF50;
+        color: white;
+        border:2px, #202224;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 13px;
+    }
+
+    /*
+    #chat_history p {
+        background-color: #4CAF50;
+        color: #fff;
+        border-radius: 10px;
+        float: right;
+        clear: both;
+        max-width: 70%;
+        margin-right: 10px;
+        overflow-wrap: break-word;
+    }
+    */
+   
+    .text  {
+        margin-top: 2px;
+        margin-bottom: 2px;
+    }
+    .loading {
+        display: none;
+        border: 4px solid rgba(255, 255, 255, 0.1);
+        border-left-color: #333;
+        border-radius: 50%;
+        width: 60px;
+        height: 60px;
+        animation: circle_load 1s linear infinite;
+    }
+
+    @keyframes circle_load {
+        to {
+            transform: rotate(360deg);
+        }
+    }
+
+    .loading_start {
+        display: block;
+    }
+
+</style>
+
+<h1>Messaging App </h1>
+
+<main>
+    <!-- The messages are displayed here -->
+    
+
+    <!-- These part ideally should be a form element, 
+    but I wrote this code a year ago and I don't want to break anything...-->
+    <section id="chat_box">
+        <button onclick="join_room()">Click To Start Chatting With {{ reciever }}</button>
+    </section>
+
+    <!-- The (message) input box is set to display: none initially, 
+    this means the input box is "invisible" initially-->
+    <div class="loading"></div>
+    <section id="message_box" style="display: none;">
+        <section id="top_strip"><button onclick="leave()">Leave Room</button></section>
+        <section id="chat_history"></section>
+        <section id="input_box" >
+            <input id="message" placeholder="message">
+            <button id="send_button" onclick="send()">Send</button>
+        </section>
+        <section id="bottom_strip"></section>
+    </section>
+</main>
+
+<script src="/static/js/libs/socket.io.min.js"></script>
+<script type="text/javascript" src="/static/js/libs/hybrid-crypto.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js" integrity="sha512-E8QSvWZ0eCLGk4km3hxSsNmGWbLtSCSUcewDQPQWZF6pEU8GlT8a5fF32wOl1i8ftdMhssTrF/OhyGWwonTcXA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+<script>
+    
+    let room_id = 0;
+    
+    // when the user presses the "Enter" key inside of the "message box", 
+    // the message is sent to the server
+    $("#message").on("keyup", (e) => {
+        if (e.key == "Enter") {
+            send();
+        }
+    })
+
+    // when the user presses the enter key inside of the "receiver box"
+    // the user joins a (socket) room
+     $("#receiver").on("keyup", (e) => {
+        if (e.key == "Enter") {
+            join_room();
+        }
+    })
+
+    $(document).ready(() => {
+        // room_id is undefined if the user hasn't joined a room
+        // we early return in this case
+        if (Cookies.get("room_id") == undefined) {
+            return;
+        }
+        // the user has already joined an existing room
+        $("#chat_box").show();
+        $("#message_box").hide();
+        room_id = parseInt(Cookies.get("room_id"));
+        const chat_history = document.getElementById("chat_history");
+        chat_history.scrollTop = chat_history.scrollHeight;
+    })
+
+    // Here's the Socket IO part of the code
+    // things get a bit complicated here so brace yourselves :P
+    let username = "{{ username }}";
+
+    Cookies.set('username', username);
+    
+    // initializes the socket
+    const socket = io();
+    
+    function join_room() {
+       
+        let receiver = "{{ reciever }}";
+
+        // generate public and private keys
+        generateKeypair();
+        socket.emit("keypair", username, localStorage.getItem("pub_key"));
+
+        // pass in the receiver of our message to the server
+        // as well as the current user's username
+        socket.emit("join", username, receiver, (res) => {
+            // res is a string with the error message if the error occurs
+            // this is a pretty bad way of doing error handling, but watevs
+            if (typeof res != "number") {
+                alert(res);
+                return;
+            }
+            // set the room id variable to the room id returned by the server
+            room_id = res;
+            Cookies.set("room_id", room_id);
+            // now we'll show the input box, so the user can input their message
+            $("#chat_history").find("p").remove();
+            socket.emit("derive_chat_key", "{{ username }}", "{{ reciever }}", "False"); // True => encrypt, False => decrypt
+        });
+    }
+
+
+    // function when the user clicks on "Leave Room"
+    // emits a "leave" event, telling the server that we want to leave the room
+    function leave() {
+        // IF button_pressed == "T", then leave button was pressed, else not.
+        Cookies.remove("room_id");
+        socket.emit("leave", username, room_id);
+        $("#message_box").hide();
+        reload();
+    }
+
+    async function reload() {
+        $('.loading').addClass('loading_start');
+        let url = "{{ url_for('friend_link') }}";
+        let res = await axios.post(url, {
+            username: '{{ username }}'
+        });
+        $('.loading').removeClass('loading_start');
+        window.open(res.data, "_self")
+    }
+        
+
+   
+   
+    // function to add a message to the message box
+    // called when an incoming message has reached a client
+    function add_message(message, color) {
+        let box = $("#chat_history");
+        let child = $(`<p style="color:${color}; margin: 0px;"></p>`).text(message);
+        socket.emit("derive_chat_key", "{{ username }}", "{{ reciever }}", "True"); // True => encrypt, False => decrypt
+        box.append(child);
+    }
+    
+</script>
+
+<script>
+    // initializes variables for RSA encryption and decryption
+    //COMMENTED
+    //let token = "{{ token }}";
+
+    //Cookies.set('token', token);
+    
+    let entropy = "entropy";
+
+    let crypt = new Crypt({
+        rsaStandard: "RSA-OAEP",
+        entropy: entropy
+    });
+
+    let rsa = new RSA({
+        entropy: entropy
+    });
+    
+    function generateKey() {
+        const key = CryptoJS.enc.Hex.parse("000102030405060708090a0b0c0d0e0f");;
+        const salt = CryptoJS.lib.WordArray.random(128/8);
+        // 256-bit key
+        const salted_key = CryptoJS.PBKDF2(key, salt, {keySize: 256/32});
+        return salted_key;
+    }
+
+    function arrayBufferToBase64(buffer) {
+        let ans = '';
+        let bytes = new Uint8Array(buffer);
+        let len = bytes.byteLength;
+        for (let i = 0; i < len; i++) {
+            ans += String.fromCharCode(bytes[i]);
+        }
+        return window.btoa(ans);
+    }
+
+    function base64ToArrayBuffer(base64_string) {
+        var binary = atob(base64_string);
+        var ans = new Uint8Array(binary.length);
+        for (var i = 0; i < binary.length; i++) {
+            ans[i] = binary.charCodeAt(i);
+        }
+        return ans.buffer;
+    }
+
+    // generate the secret for everyone in the room
+    socket.on("generate_key", (msg) => {
+        window.crypto.subtle.generateKey(
+            {
+                name: "AES-CBC",
+                length: 256
+            },
+            true, ["encrypt", "decrypt"]
+        ).then(function(key) {
+            window.crypto.subtle.exportKey("raw", key)
+                .then(function(serializedKey) {
+                    localStorage.setItem("chat_key", arrayBufferToBase64(serializedKey));
+                })
+        })
+    })
+
+    // generate our own public and private keys
+    function generateKeypair() {
+        let rsa = new RSA();
+        rsa.generateKeyPair(function(keyPair) {
+            publicKey = keyPair.publicKey;
+            privateKey = keyPair.privateKey;
+            localStorage.setItem("pub_key", publicKey);
+            localStorage.setItem("priv_key", privateKey);
+        });
+    }
+
+    // combine the array elements to get the whole key
+    function reconstructKey(array, index) {
+        let key = "";
+        for (let i = 0; i < array.length; i++) {
+            if (i == array.length - 1) {
+                key += array[i];
+            } else if (i >= index) {
+                key += array[i] + " ";
+            }
+        }
+        return key;
+    }
+    
+    socket.on("initialization", (msg, color="black") => {
+        if (color !== "black") {
+            add_message(msg, color);
+        }
+        
+        const array = msg.split(" ");
+        // encrypt and send the symmetric key
+        if (array[1] !== username && array[2] === "pub_key") {
+            let pub_key = reconstructKey(array, 3);
+            let enc = crypt.encrypt(pub_key, localStorage.getItem("chat_key"));
+            let m = array[1] + "_key " + enc;
+            socket.emit("send_key", username, m, room_id);
+        }
+        // decrypt the symmetric key using private key
+        let temp = username + "_key";
+        if (array[1] === temp) {
+            let enc = reconstructKey(array, 2);
+            let dec = crypt.decrypt(localStorage.getItem("priv_key"), enc);
+            localStorage.setItem("chat_key", dec.message);
+            // send a message confirming that key is sent successfully
+            socket.emit("send_key", username, "Received key", room_id);
+        }
+    })
+
+    
+    // an incoming message arrives, we'll add the message to the message box
+    socket.on("incoming", (msg, color="black") => {   
+        let array = msg.split(" ");
+        let sender_name = array[0];
+        let cipher = array[1];
+        let expected_hmac = array[2];
+        let chat_key = localStorage.getItem("chat_key");
+
+        if (chat_key) {
+            // extract iv and ciphertext
+            let iv = cipher.slice(0, 24);
+            let ciphertxt = cipher.slice(24);
+            // decode iv
+            let iv_temp = atob(iv);
+            let iv_final = new Uint8Array(iv_temp.length);
+            for (var i = 0; i < iv_temp.length; i++) {
+                iv_final[i] = iv_temp.charCodeAt(i);
+            }
+            
+            // decode enc_msg
+            ciphertext = base64ToArrayBuffer(ciphertxt);
+
+            window.crypto.subtle.importKey(
+                "raw",
+                base64ToArrayBuffer(chat_key),
+                {name: "AES-CBC"},
+                false,
+                ["encrypt", "decrypt"]
+            ).then(function(key) {
+                window.crypto.subtle.decrypt({
+                        name: "AES-CBC",
+                        iv: iv_final,
+                    },
+                        key, ciphertext
+                ).then(function(dec) {
+                    let final_msg = sender_name + " ";
+                    let plaintext_msg = new TextDecoder().decode(dec);
+                    // check for integrity by comparing the hmacs
+                    window.crypto.subtle.importKey(
+                        "raw",
+                        new TextEncoder("utf-8").encode(chat_key),
+                        {
+                            name: "HMAC",
+                            hash: {name: "SHA-256"}
+                        },
+                        false,
+                        ["sign", "verify"]
+                    ).then(key => {
+                        window.crypto.subtle.sign(
+                            "HMAC",
+                            key,
+                            new TextEncoder("utf-8").encode(plaintext_msg)
+                        ).then(signature => {
+                            let t = new Uint8Array(signature);
+                            let actual_hmac = Array.prototype.map.call(t, x => x.toString(16).padStart(2, '0')).join("");
+                            if (actual_hmac !== expected_hmac) {
+                                final_msg += "(MESSAGE HAS BEEN TAMPERED) ";
+                                color = "red";
+                            }
+                            final_msg += plaintext_msg;
+                            add_message(final_msg, color);
+                            const chat_history = document.getElementById("chat_history");
+                            chat_history.scrollTop = chat_history.scrollHeight;
+                        });
+                    });
+                })
+            }); 
+        } else {
+            console.log("no key");
+        }
+    });
+    
+
+    // we'll send the message to the server by emitting a "send" event
+    function send() {
+        let message = $("#message").val();
+        $("#message").val("");
+        // encrypt the message before sending it
+        let chat_key = localStorage.getItem("chat_key");
+        let enc = new TextEncoder();
+        let m = enc.encode(message);
+        var iv = window.crypto.getRandomValues(new Uint8Array(16));
+        
+        if (chat_key) {
+            // encrypt the message, then send them with the hmac to the server
+            window.crypto.subtle.importKey(
+                "raw",
+                base64ToArrayBuffer(chat_key),
+                {name: "AES-CBC"},
+                false,
+                ["encrypt", "decrypt"]
+            ).then(function(key) {
+                window.crypto.subtle.encrypt({
+                        name: "AES-CBC",
+                        iv: iv,
+                    },
+                        key, m
+                ).then(function(enc_msg) {
+                    iv = btoa(String.fromCharCode.apply(null, iv));
+                   
+                    let msg = new Uint8Array(enc_msg);
+                    enc_msg = btoa(String.fromCharCode.apply(null, msg));
+                    window.crypto.subtle.importKey(
+                        "raw",
+                        new TextEncoder("utf-8").encode(chat_key),
+                        {
+                            name: "HMAC",
+                            hash: {name: "SHA-256"}
+                        },
+                        false,
+                        ["sign", "verify"]
+                    ).then(key => {
+                        window.crypto.subtle.sign(
+                            "HMAC",
+                            key,
+                            new TextEncoder("utf-8").encode(message)
+                        ).then(signature => {
+                            let t = new Uint8Array(signature);
+                            let hmac = Array.prototype.map.call(t, x => x.toString(16).padStart(2, '0')).join("");
+                            let temp = iv + enc_msg + " " + hmac;
+                            socket.emit("send", username, "{{ reciever }}", temp, "black" , room_id);
+                        });
+                    });
+                })
+            })
+        } else {
+            console.log("no key");
+        }
+    }
+
+</script>
+
+<!-- DIFFERENT WAYS USER LEAVES ROOM -->
+<script>
+
+    const base_logout_button = document.getElementById("base_logout_button");
+    const base_friend_request_button = document.getElementById("base_friend_request_button");
+    const base_search_button = document.getElementById("base_search_button");
+    const base_start_chatting_button = document.getElementById("base_start_chatting_button");
+    //const base_signup_button = document.getElementById("base_signup_button");
+    //const base_login_button = document.getElementById("base_login_button");
+
+    base_logout_button.addEventListener("click", function(){
+        leave();
+    })
+    base_friend_request_button.addEventListener("click", function(){
+        leave();
+    })
+    base_search_button.addEventListener("click", function(){
+        leave();
+    })
+    base_start_chatting_button.addEventListener("click", function(){
+        leave();
+    })
+    /*
+    base_signup_button.addEventListener("click", function(){
+    leave('F');
+    })
+    base_login_button.addEventListener("click", function(){
+    leave('F');
+    })
+    */
+    window.onbeforeunload = function() {
+        leave();
+    };
+
+</script>
+
+<script>
+
+socket.on('get_chat', async (password, salt, enc_msg, hmac, encrypt_or_decrypt) => {
+    if ($("#chat_box").is(":visible")) {
+        $("#chat_box").hide();
+        $('.loading').addClass('loading_start');
+    }
+    
+    if (encrypt_or_decrypt !== null) {
+
+        var derivedKey = await get_key();
+        if (!derivedKey) {
+            return null;
+        }
+
+        let return_val;
+
+        if (encrypt_or_decrypt !== "True") {    // True => encrypt, False => decrypt
+            
+            let return_val = await decryptMessage(enc_msg, derivedKey, hmac);
+
+            if (return_val !== null) {
+
+                let return_msg = $("<div>").html(return_val).text();
+                let message = return_msg.substring(0, return_msg.lastIndexOf("|"));
+                let color = return_msg.substring(return_msg.lastIndexOf("|")+1);
+                let box = $("#chat_history");
+                let child = $(`<p style="color:${color}; margin: 0px;"></p>`).text(message);
+                box.append(child);
+
+            }
+        } else {
+
+            let retrieved_msg = $("<div>").text($("#chat_history p:last").text()).html();
+            let color =  $("#chat_history p:last").css("color");
+            let msg = retrieved_msg+"|"+color;
+
+            let [return_val, h] = await encryptMessage(msg, derivedKey);
+
+            const black = "rgb(0, 0, 0)";
+    
+            if (color !== black) {
+                socket.emit("store", "{{ username }}", "{{ reciever }}", return_val, h, "True");
+            } else {
+                socket.emit("store", "{{ username }}", "{{ reciever }}", return_val, h, "False");
+            }
+            
+        }
+
+    }
+    $('.loading').removeClass('loading_start');
+    $("#message_box").show();
+
+    const chat_history = document.getElementById("chat_history");
+    chat_history.scrollTop = chat_history.scrollHeight;
+});
+
+
+
+async function encryptMessage(msg, derivedKey, salt) {
+    try {
+        const msgBuff = new TextEncoder().encode(msg);
+        const encodedKey = new TextEncoder().encode(derivedKey);
+        const iv = crypto.getRandomValues(new Uint8Array(16)); 
+
+        const encryptedData = await crypto.subtle.encrypt(
+            { name: "AES-GCM", iv: iv },
+            derivedKey,
+            msgBuff
+        );
+        
+        const hex = await get_hmac(encodedKey, msgBuff);
+
+        const encryptedMsg = new Uint8Array(iv.byteLength + encryptedData.byteLength);
+        encryptedMsg.set(new Uint8Array(iv), 0);
+        encryptedMsg.set(new Uint8Array(encryptedData), iv.byteLength);
+
+        return [encryptedMsg, hex];
+
+    } catch (error) {
+
+        console.error("Encryption error:", error);
+        return null;
+    }
+}
+
+async function get_hmac(encodedKey, msgBuff) {
+
+    const hmacKey = await window.crypto.subtle.importKey(
+        'raw',
+        encodedKey,
+        { name: 'HMAC', hash: 'SHA-256' },
+        true,
+        ['sign', 'verify']
+    );
+    const signature = await window.crypto.subtle.sign(
+        'HMAC',
+        hmacKey,
+        msgBuff
+    );
+
+    const hex = bufferToHex(signature);
+    return hex;
+
+}
+
+function bufferToHex(buffer) {
+    const byte_array = Array.from(new Uint8Array(buffer));
+    const hex_array = byte_array.map(byte => byte.toString(16).padStart(2, '0'));
+    const hex = hex_array.join('');
+    return hex;
+}
+
+async function decryptMessage(msg, derivedKey, h) {
+    try {
+        const iv = msg.slice(0, 16); 
+        const encodedKey = new TextEncoder().encode(derivedKey);
+        const decryptedData = await crypto.subtle.decrypt(
+            {
+                name: "AES-GCM",
+                iv: iv
+            },
+            derivedKey,
+            msg.slice(16) 
+        );
+
+        const hex = await get_hmac(encodedKey, decryptedData);
+
+        if (hex !== h) {
+            console.error("Decryption error:", error);
+            return null;
+        }
+
+        const decryptedMessage = new TextDecoder().decode(decryptedData);
+        return decryptedMessage;
+
+    } catch (error) {
+
+        console.error("Decryption error:", error);
+        return null;
+    }
+}
+
+</script>
+
+{% endblock %}

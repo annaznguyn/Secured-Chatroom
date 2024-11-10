@@ -1,0 +1,214 @@
+<!-- 
+All pages inherit from this page, this is the "base" page. 
+Think of Java inheritance, but for web pages, eww... 
+
+Contains script tags that tells the browser where to locate the JQuery scripts.
+This code is pretty gross since everything is imported globally, if you're familiar with Python
+this is equivalent to a bunch of glob imports -> import * from jquery. 
+
+Yeah I know it's pretty ugly...
+-->
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>HTML :)</title> 
+        <script src="/static/js/libs/axios.min.js"></script>
+        <script src="/static/js/libs/jquery.min.js"></script>
+        <script src="/static/js/libs/js.cookie.min.js"></script>
+        <style>
+            body { 
+                margin: 0;
+                min-width:936px;
+                background-color:#21c8a7;
+            }
+            .navBar ul {
+                list-style-type: none;
+                margin: 0;
+                padding: 0;
+                overflow: hidden;
+                background-color: #333;
+                position: fixed;
+                top: 0;
+                width: 100%;
+            }
+            .navBar ul li {
+                float: left;
+            }
+
+            .navBar ul li button {
+                background-color: #333;
+                border: none;
+                color: white;
+                padding: 15px 15px;
+                text-align: center;
+                text-decoration: none;
+                display: inline-block;
+                font-size: 16px;
+                margin: .1px;
+                cursor: pointer;  
+            }
+            .navBar ul li button:hover {
+                background-color: #5f5d5d;
+            }
+            
+            
+        </style>
+    </head>
+    <body>
+        <!-- The content from any other page goes here -->
+        <div class="navBar">
+            <ul>
+                <li><button style="cursor:auto; pointer-events: none;">App Name</button></li>
+                
+                {% if username != None %}
+                    <li><button id="base_start_chatting_button" onclick="friend()"> Start Chatting </button></li>
+                    <li><button id="base_search_button" onclick="search()"> Search </button></li>
+                    <li><button id="base_friend_request_button" onclick="friend_requests()"> Requests </button></li>
+                    <li><button id="base_logout_button" onclick="logout()"> Logout </button></li>
+                    <li style="float:right;"><button style="cursor:auto; pointer-events: none;">User: {{ username }}</button></li>
+                {% else %}
+                    <li><button id="base_signup_button" type="button" onclick="window.location.href='{{ url_for('signup') }}'"> Sign Up</button></li>
+                    <li><button id="base_login_button" type="button" onclick="window.location.href='{{ url_for('login') }}'"> Login</button></li>
+                {% endif %}
+            </ul>
+        </div>
+        <div style="padding:20px;margin-top:30px;">
+            {% block content %} {% endblock %}
+        </div>
+
+        <script>
+            async function logout() { 
+                sessionStorage.removeItem('session');
+                localStorage.removeItem('derivedKey');
+                let url = "{{ url_for('logout') }}";
+                let res = await axios.post(url, {
+                    username: '{{ username }}'
+                });
+                window.open(res.data, "_self")
+            }
+            async function search() {
+                let url = "{{ url_for('search_link') }}";
+                let res = await axios.post(url, {
+                    username: '{{ username }}'
+                });
+                
+                window.open(res.data, "_self")
+            }
+
+            async function friend_requests() {
+                let url = "{{ url_for('friend_request_link') }}";
+                let res = await axios.post(url, {
+                    username: '{{ username }}'
+                });
+                
+                window.open(res.data, "_self")
+            }
+
+            async function friend() {
+                let url = "{{ url_for('friend_link') }}";
+                let res = await axios.post(url, {
+                    username: '{{ username }}'
+                });
+                window.open(res.data, "_self")
+            }
+        </script>
+
+        <script>
+            // SETTING COOKIES AND CHECKING EVERYTIME
+            // set session done in login line 53,54
+
+            //  check session
+            function checkSession(username) {
+                const stored_session = sessionStorage.getItem('session');
+                if (stored_session !== username) {
+                    logout();
+                }
+            }
+
+            window.onload = function() {
+                const urlParams = new URLSearchParams(window.location.search);
+                const username = urlParams.get('username');
+                if (username) {
+                    checkSession(username);
+                }
+            }
+        </script>
+
+        <script>
+            async function make_key(salt, password) {
+
+                const iterations = 100000; 
+                const length = 32;
+
+                const passBuff = new TextEncoder().encode(password);
+                const saltBuff = new TextEncoder().encode(salt);
+
+                try {
+                    const key = await crypto.subtle.importKey(
+                        "raw", passBuff,
+                        { name: "PBKDF2" }, false, ["deriveKey"]
+                    );
+
+                    const derivedKey = await crypto.subtle.deriveKey(
+                        { name: "PBKDF2", salt: saltBuff,
+                            iterations: iterations, hash: { name: "SHA-256" } },
+                        key,
+                        { name: "AES-GCM", length: length * 8 },
+                        true,
+                        ["encrypt", "decrypt"]
+                    );
+
+                    let exportedDerivedKey = await crypto.subtle.exportKey("raw", derivedKey);
+                    let keyInBytes = Array.from(new Uint8Array(exportedDerivedKey))
+                    localStorage.setItem('derivedKey', JSON.stringify(keyInBytes));
+                } catch (error) {
+                    console.error("Key Error:", error);
+                    return null;
+                }
+            }
+
+            async function get_key() {
+                try {
+                    let exportedDerivedKeyInBytes = localStorage.getItem('derivedKey');
+                    if (exportedDerivedKeyInBytes) {
+                        const exportedDerivedKey = new Uint8Array(JSON.parse(exportedDerivedKeyInBytes));
+                        const importedKey = await crypto.subtle.importKey(
+                            "raw", exportedDerivedKey,
+                            { name: "AES-GCM" },
+                            true,
+                            ["encrypt", "decrypt"]
+                        );
+
+                        return importedKey;
+                    } else {
+                        console.error("Key not Found!");
+                        return null;
+                    }
+                } catch (error) {
+                    console.error("Key Error:", error);
+                    return null;
+                }
+            }
+
+        </script>
+   
+        <script>
+            function Filter(c, i) {
+                var input = document.getElementById(i).value;
+                var filter = input.toUpperCase();
+                var ul = document.getElementById(c);
+                var li = ul.getElementsByTagName("li");
+                for (var i = 0; i < li.length; i++) {
+                    var a = li[i].getElementsByTagName("a")[0];
+                    var txt = a.textContent || a.innerText;
+                    if (txt.toUpperCase().indexOf(filter) > -1) {
+                        li[i].style.display = "";
+                    } else {
+                        li[i].style.display = "none";
+                    }
+                }
+            }
+        </script>
+    </body>
+
+</html>

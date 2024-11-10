@@ -1,0 +1,36 @@
+<!-- 
+Index page, the "default" page when you visit "http://localhost/" 
+ without any URL parameters at the end
+ -->
+{% extends 'base.jinja' %}
+
+
+{% block content %} 
+    <style>
+        .signup_login {
+            text-align: center;
+        }
+        .signup_login a {
+            display: inline-block;
+            padding: 5px;
+            border: none;
+            text-decoration: none;
+            background-color: salmon;
+            color: white;
+            padding: 15px 32px;
+            text-align: center;
+            margin: 4px 20px;
+            transition-duration: 0.2s;
+        }
+        .signup_login a:hover {
+            box-shadow: 10px 10px lightblue;
+        }
+    </style>
+
+    <div class="signup_login">
+        <h1>Welcome to the site!</h1>
+        <a href={{ url_for('signup') }}> Sign Up</a>
+        <a href={{ url_for('login') }}> Login</a>
+    </div>
+    
+{% endblock %}

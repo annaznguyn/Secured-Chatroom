@@ -1,0 +1,98 @@
+{% extends 'base.jinja' %}
+
+
+{% block content %} 
+<style>
+    *:not(.navBar) {
+        box-sizing: border-box;
+    }
+
+    .sent_request_list {
+        width: 50%;
+        padding-right: 3%;
+        padding-left: 1%;
+        float: left;
+    }
+
+    .recieved_request_list {
+        width: 50%;
+        padding-right: 3%;
+        padding-left: 1%;
+        float: left;
+    }
+    
+    
+    #first_row_request, #second_row_request {
+        width: 49%;
+        font-size: 16px;
+        padding: 12px 20px 12px 40px;
+        border: 1px solid #ddd;
+        margin-bottom: 12px;
+    }
+
+    #ul_1, #ul_2 {
+        list-style-type: none;
+        padding: 0;
+        margin: 0;
+    }
+
+    #ul_2 li a, #ul_1 li a {
+        border: 1px solid #ddd;
+        margin-top: -1px; /* Prevent double borders */
+        background-color: #f6f6f6;
+        padding: 12px;
+        padding-left: 50px;
+        padding-right: 50px;
+        text-decoration: none;
+        font-size: 18px;
+        color: black;
+        display: block
+    }
+
+    #ul_2 li a:hover:not(.header), #ul_1 li a:hover:not(.header) {
+        background-color: #eee;
+    }
+</style>
+
+
+<h1 style="padding-left: 1rem">Request List</h1>
+
+<section class="sent_request_list">
+    <input type="text" id="first_row_request" onkeyup="Filter('ul_2', 'first_row_request')" placeholder="Requests">
+    <ul id="ul_2">
+        {% for r in friend_requests %}
+            <li><a>{{ r }} <button onclick="accept_request('{{ r }}')" style="float: right;">Accept Request</button></a></li>
+        {% endfor %}
+    </ul>
+</section>
+<section class="recieved_request_list">
+    <input type="text" id="second_row_request" onkeyup="Filter('ul_1', 'second_row_request')" placeholder="Requests">
+    <ul id="ul_1">
+        
+        {% for r in sent_friend_requests %}
+            <li><a>{{ r }} <button onclick="retract_request('{{ r }}')" style="float: right;">Retract Request</button></a></li>
+        {% endfor %}
+    </ul>
+</section>
+
+<script>
+async function accept_request(obj) {
+    let searchURL = "{{ url_for('accept_request') }}";
+    let res = await axios.post(searchURL, {
+        username: '{{ username }}',
+        friend: obj
+    });
+    window.open(res.data, "_self");
+}
+
+async function retract_request(obj) {
+    let searchURL = "{{ url_for('retract_request') }}";
+    let res = await axios.post(searchURL, {
+        username: '{{ username }}',
+        friend: obj
+    });
+    window.open(res.data, "_self");
+
+}
+</script>
+{% endblock %}
